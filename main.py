@@ -115,63 +115,6 @@ class Label:
         self.text = text
         self.draw(surface)
 
-    def anim_txt(self, surface):
-        # збільшуємо к-сть символів для показу
-        if self.end < len(self.text):
-            self.end += 1
-
-        # поточний шматок тексту для анімації
-        visible_text = self.text[: self.end]
-
-        # розбиваємо його на рядки, які влізуть у ширину
-        words = visible_text.split(" ")
-        lines = []
-        line = ""
-        for w in words:
-            test_line = (line + " " + w).strip()
-            img = self.font.render(test_line, True, self.color)
-            if img.get_width() <= 400:  # обмеження по ширині
-                line = test_line
-            else:
-                lines.append(line)
-                line = w
-        if line:
-            lines.append(line)
-
-        # малюємо всі рядки
-        x, y = self.x, self.y
-        for ln in lines:
-            img = self.font.render(ln, True, self.color)
-            screen.blit(img, (x, y))
-            y += img.get_height() + 5  # відстань між рядками
-
-        for txt in self.txts:
-            img = self.font.render(txt, True, self.color)
-            surface.blit(img, (self.x, self.y))
-
-
-class Button:
-    def __init__(
-        self, x, y, w, h, text, font_size=30, color=(0, 0, 0), bg_color=(200, 200, 200)
-    ):
-        self.font = pygame.font.SysFont("Arial", font_size)
-        self.text = text
-        self.color = color
-        self.bg_color = bg_color
-        self.rect = pygame.Rect(x, y, w, h)
-
-    def draw(self, surface):
-        pygame.draw.rect(surface, self.bg_color, self.rect)
-        img = self.font.render(self.text, True, self.color)
-        text_rect = img.get_rect(center=self.rect.center)
-        surface.blit(img, text_rect)
-
-    def is_clicked(self, event):
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            if self.rect.collidepoint(event.pos):
-                return True
-        return False
-
 
 # ---------------- Карта ----------------
 # 0 - empty space
@@ -184,7 +127,6 @@ walls = []
 
 
 def create_map():
-    # Фіксуємо межі сітки для рівномірного та досяжного розміщення
     start_x, start_y = 300, 260
     rows = 5
     cols = 4
@@ -206,6 +148,9 @@ def create_map():
                     walls.append(Sprite(x, y, 40, 40, "wall.png"))
                     pigs.append(Sprite(x + 4, y + 4, 32, 32, "pig.png"))
 
+    if not pigs:
+        pigs.append(Sprite(start_x + 4, start_y + 4, 32, 32, "pig.png"))
+
 
 # ---------------- Ініціалізація ----------------
 screen = pygame.display.set_mode((500, 500))
@@ -218,80 +163,30 @@ create_map()
 catapult = Catapult(00, 380)
 ball = Ball(0, 0)
 
-start_game = False
-ruls = False
-btn_start = Button(150, 200, 200, 50, "Start Game", 40, (255, 255, 255), (0, 200, 0))
-btn_ruls = Button(150, 300, 200, 50, "Rules", 40, (255, 255, 255), (0, 0, 200))
-txt = """Use UP and DOWN to move the catapult.  
-Press SPACE to fire.  
-Destroy all pigs!  
-
-🐦 The birds are counting on you — stop the sneaky pigs from stealing their eggs! 🐷"""
-label_ruls = Label(50, 100, txt, 30, (7, 26, 145))
-name_game = Label(100, 100, "Angry Birds", 60, (255, 0, 0))
-btn_back = Button(10, 10, 100, 40, "Back", 30, (255, 255, 255), (200, 0, 0))
-
 score = Label(10, 10, "Score: 0", 30, (21, 143, 148))
 fire = Label(350, 10, "Fire: 30", 30, (214, 121, 18))
 
-end_game = False
-end_text = Label(50, 200, "", 40, (255, 0, 0))
 # ---------------- Основний цикл ----------------
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
 
-        if btn_start.is_clicked(event):
-            start_game = True
-        if btn_ruls.is_clicked(event):
-            ruls = True
-        if btn_back.is_clicked(event):
-            ruls = False
-            if end_game:
-                end_game = False
-                ball.count_fire = 30
-                ball.count = 0
-                walls.clear()
-                pigs.clear()
-                create_map()
-
     screen.blit(fon, (0, 0))
-    if not start_game and not ruls:
-        name_game.anim_txt(screen)
-        btn_start.draw(screen)
-        btn_ruls.draw(screen)
-    elif ruls:
-        label_ruls.anim_txt(screen)
-        btn_back.draw(screen)
-    elif end_game:
-        end_text.anim_txt(screen)
-        btn_back.draw(screen)
-    else:
-        score.update(f"Score: {ball.count}", screen)
 
-        fire.update(f"Fire: {ball.count_fire}", screen)
+    score.update(f"Score: {ball.count}", screen)
+    fire.update(f"Fire: {ball.count_fire}", screen)
 
-        for wall in walls:
-            wall.draw(screen)
-        for pig in pigs:
-            pig.draw(screen)
-        catapult.draw(screen)
-        catapult.update(ball)
-        ball.update(walls, pigs)
-        ball.draw(screen)
-
-        if ball.count_fire <= 0 and not ball.fire:
-            end_game = True
-            end_text = Label(150, 200, "Game Over", 60, (255, 0, 0))
-        if len(pigs) == 0:
-            end_game = True
-            end_text = Label(
-                50, 200, f"You WIN!! Your score: {ball.count}!", 40, (0, 200, 0)
-            )
+    for wall in walls:
+        wall.draw(screen)
+    for pig in pigs:
+        pig.draw(screen)
+    catapult.draw(screen)
+    catapult.update(ball)
+    ball.update(walls, pigs)
+    ball.draw(screen)
 
     pygame.display.flip()
     clock.tick(40)
 
 pygame.quit()
-
