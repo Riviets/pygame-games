@@ -1,164 +1,186 @@
+from random import choice, randint, uniform
+
 import pygame
 
 pygame.init()
-from random import randint
+
+WIDTH, HEIGHT = 800, 600
+FPS = 60
+SPAWN_INTERVAL = 600
+START_LIVES = 3
+
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+RED = (255, 0, 0)
+
+SCREEN_RECT = pygame.Rect(0, 0, WIDTH, HEIGHT)
 
 
-# ---------------- Базовий клас ----------------
 class Sprite:
-    def __init__(self, x, y, img):
-        self.img = pygame.image.load(img)
-        self.rect = pygame.Rect(x, y, 24, 24)
+    def __init__(self, x, y, width, height, color):
+        self.image = pygame.Surface((width, height), pygame.SRCALPHA)
+        self.image.fill(color)
+        self.rect = pygame.Rect(x, y, width, height)
+
+    def update(self):
+        pass
 
     def draw(self, surface):
-        surface.blit(self.img, (self.rect.x, self.rect.y))
+        surface.blit(self.image, self.rect)
 
 
-# ---------------- Лічильники ----------------
-class Label(Sprite):
-    """Лічильник із зображенням і числом для відображення часу або здоров'я"""
+class TextLabel(Sprite):
+    def __init__(self, x, y, size, color, anchor="topleft"):
+        super().__init__(x, y, 1, 1, None)
+        self.font = pygame.font.Font(None, size)
+        self.color = color
+        self.pos = (x, y)
+        self.anchor = anchor
+        self.text = None
+        self.set_text("")
 
-    def __init__(self, x, y, img, count, dx, dy):
-        super().__init__(x, y, img)
-        self.font = pygame.font.Font(None, 28)
-        self.count = count
-        self.dx = dx
-        self.dy = dy
-
-    def draw(self, surface):
-        super().draw(surface)
-        text = self.font.render(str(int(self.count)), True, (255, 0, 0))
-        surface.blit(text, (self.rect.x + self.dx, self.rect.y + self.dy))
+    def set_text(self, text):
+        if text != self.text:
+            self.text = text
+            self.image = self.font.render(text, True, self.color)
+            self.rect = self.image.get_rect(**{self.anchor: self.pos})
 
 
-# ---------------- Труби ----------------
-class Wall:
+class Player(Sprite):
+    SIZE = 20
+    SPEED = 5
+
     def __init__(self):
-        self.rects = []
-        self.img = pygame.image.load("wall.png")
-
-        x = 500
-        for _ in range(3):  # три пари труб
-            self.add_pipe_pair(x)
-            x += 200
-
-    def add_pipe_pair(self, x):
-        """Створює пару труб із випадковим проміжком"""
-        y = randint(-70, 0)
-        top = pygame.Rect(x, y, 30, 250)
-        bottom = pygame.Rect(x, y + 320, 30, 250)
-        self.rects.extend([top, bottom])
-
-    def randomize_pipe(self, i):
-        """Оновлює одну пару труб (за індексом верхньої або нижньої)"""
-        x = randint(600, 800)
-        y = randint(-70, 0)
-        if i % 2 == 0:  # верхня труба
-            self.rects[i].x, self.rects[i].y = x, y
-            self.rects[i + 1].x, self.rects[i + 1].y = x, y + 320
-        else:  # нижня труба
-            self.rects[i - 1].x, self.rects[i - 1].y = x, y
-            self.rects[i].x, self.rects[i].y = x, y + 320
-
-    def draw(self, surface):
-        for rect in self.rects:
-            surface.blit(self.img, (rect.x - 60, rect.y))
-            # pygame.draw.rect(surface, (255, 0, 0), rect, 2)  # для дебага
+        super().__init__(
+            WIDTH // 2 - self.SIZE // 2,
+            HEIGHT // 2 - self.SIZE // 2,
+            self.SIZE,
+            self.SIZE,
+            RED,
+        )
+        self.lives = START_LIVES
 
     def update(self):
-        for i, rect in enumerate(self.rects):
-            rect.x -= 2
-            if rect.x < -80:  # якщо вилетіла труба → робимо нову пару
-                self.randomize_pipe(i)
-
-
-# ---------------- Пташка ----------------
-class Bird(Sprite):
-    def __init__(self, x, y):
-        """Пташка, що літає між трубами"""
-        super().__init__(x, y, "b1.png")
-        self.gravity = 0
-        self.anim = 0
-
-    def animate(self):
-        self.anim += 0.1
-        if self.anim >= 6:
-            self.anim = 0
-            self.img = pygame.image.load("b2.png")
-        elif self.anim >= 3:
-            self.img = pygame.image.load("b1.png")
-
-    def update(self):
-        """Оновлення стану пташки: гравітація, анімація, стрибок"""
-        self.animate()
-        self.gravity += 0.2
-        self.rect.y += self.gravity
         keys = pygame.key.get_pressed()
-        if keys[pygame.K_SPACE]:
-            self.jump()
+        dx = (keys[pygame.K_RIGHT] or keys[pygame.K_d]) - (
+            keys[pygame.K_LEFT] or keys[pygame.K_a]
+        )
+        dy = (keys[pygame.K_DOWN] or keys[pygame.K_s]) - (
+            keys[pygame.K_UP] or keys[pygame.K_w]
+        )
+        self.rect.x += dx * self.SPEED
+        self.rect.y += dy * self.SPEED
+        self.rect.clamp_ip(SCREEN_RECT)
 
-    def jump(self):
-        self.gravity = -2.5
-
-    def collide(self, wall):
-        for i, rect in enumerate(wall.rects):
-            if self.rect.colliderect(rect):
-                # скидаємо пташку назад
-                self.rect.x, self.rect.y = 50, 250
-                self.gravity = 0
-                # переносимо пару труб
-                wall.randomize_pipe(i)
-                return True
-        return False
+    def collide(self, bullet):
+        return self.rect.colliderect(bullet.rect)
 
 
-# ---------------- Ініціалізація ----------------
-screen = pygame.display.set_mode((500, 500))
-fon = pygame.image.load("fon.png")
+class Bullet(Sprite):
+    RADIUS = 8
+    MARGIN = 100
+
+    def __init__(self, target):
+        size = self.RADIUS * 2
+        super().__init__(0, 0, size, size, None)
+        pygame.draw.circle(self.image, WHITE, (self.RADIUS, self.RADIUS), self.RADIUS)
+
+        side = choice(("top", "bottom", "left", "right"))
+        if side == "top":
+            self.pos = pygame.math.Vector2(randint(0, WIDTH), -self.RADIUS)
+        elif side == "bottom":
+            self.pos = pygame.math.Vector2(randint(0, WIDTH), HEIGHT + self.RADIUS)
+        elif side == "left":
+            self.pos = pygame.math.Vector2(-self.RADIUS, randint(0, HEIGHT))
+        else:
+            self.pos = pygame.math.Vector2(WIDTH + self.RADIUS, randint(0, HEIGHT))
+
+        aim = pygame.math.Vector2(target) + pygame.math.Vector2(
+            randint(-60, 60), randint(-60, 60)
+        )
+        self.velocity = (aim - self.pos).normalize() * uniform(3, 6)
+        self.rect.center = self.pos
+
+    def update(self):
+        self.pos += self.velocity
+        self.rect.center = self.pos
+
+    def is_outside(self):
+        return not SCREEN_RECT.inflate(self.MARGIN * 2, self.MARGIN * 2).colliderect(
+            self.rect
+        )
+
+
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Undertale MVP")
 clock = pygame.time.Clock()
-running = True
-font_large = pygame.font.Font(None, 64)
 
-"""Ініціалізація пташки, труб, лічильників здоров'я і часу"""
-wall = Wall()
-bird = Bird(30, 125)
+lives_label = TextLabel(10, 10, 36, WHITE, "topleft")
+score_label = TextLabel(WIDTH - 10, 10, 36, WHITE, "topright")
+game_over_label = TextLabel(WIDTH // 2, HEIGHT // 2 - 50, 80, RED, "center")
+final_score_label = TextLabel(WIDTH // 2, HEIGHT // 2 + 20, 48, WHITE, "center")
+restart_label = TextLabel(WIDTH // 2, HEIGHT // 2 + 80, 30, WHITE, "center")
+game_over_label.set_text("GAME OVER")
+restart_label.set_text("Press R to restart")
 
-health_label = Label(10, 10, "b1.png", count=3, dx=30, dy=2)
-time_label = Label(400, 10, "b1.png", count=30, dx=30, dy=2)
-
+player = Player()
+bullets = []
+score = 0
 game_over = False
+last_spawn = pygame.time.get_ticks()
 
-# ---------------- Основний цикл ----------------
+running = True
 while running:
+    now = pygame.time.get_ticks()
+
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_r and game_over:
+            player = Player()
+            bullets = []
+            score = 0
+            game_over = False
+            last_spawn = now
 
-    screen.blit(fon, (0, 0))
     if not game_over:
-        wall.update()
-        bird.update()
+        player.update()
 
-        time_label.count -= 1 / 40
+        if now - last_spawn >= SPAWN_INTERVAL:
+            bullets.append(Bullet(player.rect.center))
+            last_spawn = now
 
-        if bird.collide(wall) or bird.rect.y > 500 or bird.rect.y < 0:
-            health_label.count -= 1
+        for bullet in bullets[:]:
+            bullet.update()
+            if player.collide(bullet):
+                player.lives -= 1
+                bullets.remove(bullet)
+            elif bullet.is_outside():
+                score += 1
+                bullets.remove(bullet)
 
-        if health_label.count <= 0 or time_label.count <= 0:
+        if player.lives <= 0:
+            player.lives = 0
             game_over = True
 
-    wall.draw(screen)
-    bird.draw(screen)
-    health_label.draw(screen)
-    time_label.draw(screen)
+        lives_label.set_text(f"Lives: {player.lives}")
+        score_label.set_text(f"Score: {score}")
+        final_score_label.set_text(f"Final score: {score}")
+
+    screen.fill(BLACK)
 
     if game_over:
-        over_text = font_large.render("GAME OVER", True, (255, 0, 0))
-        text_rect = over_text.get_rect(center=(250, 250))
-        screen.blit(over_text, text_rect)
+        game_over_label.draw(screen)
+        final_score_label.draw(screen)
+        restart_label.draw(screen)
+    else:
+        player.draw(screen)
+        for bullet in bullets:
+            bullet.draw(screen)
+        lives_label.draw(screen)
+        score_label.draw(screen)
 
     pygame.display.flip()
-    clock.tick(40)
+    clock.tick(FPS)
 
 pygame.quit()
-
