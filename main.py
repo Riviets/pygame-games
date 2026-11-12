@@ -1,164 +1,150 @@
+import random
+import sys
+
 import pygame
 
 pygame.init()
-from random import randint
-
-
-# ---------------- Базовий клас ----------------
-class Sprite:
-    def __init__(self, x, y, img):
-        self.img = pygame.image.load(img)
-        self.rect = pygame.Rect(x, y, 24, 24)
-
-    def draw(self, surface):
-        surface.blit(self.img, (self.rect.x, self.rect.y))
-
-
-# ---------------- Лічильники ----------------
-class Label(Sprite):
-    """Лічильник із зображенням і числом для відображення часу або здоров'я"""
-
-    def __init__(self, x, y, img, count, dx, dy):
-        super().__init__(x, y, img)
-        self.font = pygame.font.Font(None, 28)
-        self.count = count
-        self.dx = dx
-        self.dy = dy
-
-    def draw(self, surface):
-        super().draw(surface)
-        text = self.font.render(str(int(self.count)), True, (255, 0, 0))
-        surface.blit(text, (self.rect.x + self.dx, self.rect.y + self.dy))
-
-
-# ---------------- Труби ----------------
-class Wall:
-    def __init__(self):
-        self.rects = []
-        self.img = pygame.image.load("wall.png")
-
-        x = 500
-        for _ in range(3):  # три пари труб
-            self.add_pipe_pair(x)
-            x += 200
-
-    def add_pipe_pair(self, x):
-        """Створює пару труб із випадковим проміжком"""
-        y = randint(-70, 0)
-        top = pygame.Rect(x, y, 30, 250)
-        bottom = pygame.Rect(x, y + 320, 30, 250)
-        self.rects.extend([top, bottom])
-
-    def randomize_pipe(self, i):
-        """Оновлює одну пару труб (за індексом верхньої або нижньої)"""
-        x = randint(600, 800)
-        y = randint(-70, 0)
-        if i % 2 == 0:  # верхня труба
-            self.rects[i].x, self.rects[i].y = x, y
-            self.rects[i + 1].x, self.rects[i + 1].y = x, y + 320
-        else:  # нижня труба
-            self.rects[i - 1].x, self.rects[i - 1].y = x, y
-            self.rects[i].x, self.rects[i].y = x, y + 320
-
-    def draw(self, surface):
-        for rect in self.rects:
-            surface.blit(self.img, (rect.x - 60, rect.y))
-            # pygame.draw.rect(surface, (255, 0, 0), rect, 2)  # для дебага
-
-    def update(self):
-        for i, rect in enumerate(self.rects):
-            rect.x -= 2
-            if rect.x < -80:  # якщо вилетіла труба → робимо нову пару
-                self.randomize_pipe(i)
-
-
-# ---------------- Пташка ----------------
-class Bird(Sprite):
-    def __init__(self, x, y):
-        """Пташка, що літає між трубами"""
-        super().__init__(x, y, "b1.png")
-        self.gravity = 0
-        self.anim = 0
-
-    def animate(self):
-        self.anim += 0.1
-        if self.anim >= 6:
-            self.anim = 0
-            self.img = pygame.image.load("b2.png")
-        elif self.anim >= 3:
-            self.img = pygame.image.load("b1.png")
-
-    def update(self):
-        """Оновлення стану пташки: гравітація, анімація, стрибок"""
-        self.animate()
-        self.gravity += 0.2
-        self.rect.y += self.gravity
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_SPACE]:
-            self.jump()
-
-    def jump(self):
-        self.gravity = -2.5
-
-    def collide(self, wall):
-        for i, rect in enumerate(wall.rects):
-            if self.rect.colliderect(rect):
-                # скидаємо пташку назад
-                self.rect.x, self.rect.y = 50, 250
-                self.gravity = 0
-                # переносимо пару труб
-                wall.randomize_pipe(i)
-                return True
-        return False
-
-
-# ---------------- Ініціалізація ----------------
-screen = pygame.display.set_mode((500, 500))
-fon = pygame.image.load("fon.png")
+WIDTH, HEIGHT = 600, 800
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("2D Subway Surfers")
 clock = pygame.time.Clock()
+
+LANES = [100, 300, 500]
+
+
+class Sprite:
+    def __init__(self, x, y, width, height, color):
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.color = color
+
+    def get_rect(self):
+        return pygame.Rect(
+            self.x - self.width // 2, self.y - self.height // 2, self.width, self.height
+        )
+
+    def update(self):
+        pass
+
+    def draw(self, surface):
+        pygame.draw.rect(surface, self.color, self.get_rect())
+
+
+class Player(Sprite):
+    def __init__(self):
+        self.lane_index = 1
+        super().__init__(LANES[self.lane_index], HEIGHT - 100, 50, 50, (0, 255, 0))
+
+    def move_left(self):
+        if self.lane_index > 0:
+            self.lane_index -= 1
+            self.x = LANES[self.lane_index]
+
+    def move_right(self):
+        if self.lane_index < 2:
+            self.lane_index += 1
+            self.x = LANES[self.lane_index]
+
+
+class Obstacle(Sprite):
+    def __init__(self, lane_index):
+        super().__init__(LANES[lane_index], -100, 60, 100, (255, 50, 50))
+        self.speed = 8
+
+    def update(self):
+        self.y += self.speed
+
+
+class TextLabel:
+    def __init__(self, text, x, y, font_size=36, color=(255, 255, 255)):
+        self.font = pygame.font.SysFont("arial", font_size)
+        self.color = color
+        self.x = x
+        self.y = y
+        self.update_text(text)
+
+    def update_text(self, text):
+        self.image = self.font.render(text, True, self.color)
+        self.rect = self.image.get_rect(center=(self.x, self.y))
+
+    def draw(self, surface):
+        surface.blit(self.image, self.rect)
+
+
+player = Player()
+obstacles = []
+score = 0
+spawn_timer = 0
+total_obstacles_to_spawn = 20
+spawned_obstacles_count = 0
+
+score_label = TextLabel(f"Бали: {score}", 100, 30, font_size=40)
+message_label = TextLabel("", WIDTH // 2, HEIGHT // 2, font_size=60)
+game_state = "PLAYING"
+
 running = True
-font_large = pygame.font.Font(None, 64)
-
-"""Ініціалізація пташки, труб, лічильників здоров'я і часу"""
-wall = Wall()
-bird = Bird(30, 125)
-
-health_label = Label(10, 10, "b1.png", count=3, dx=30, dy=2)
-time_label = Label(400, 10, "b1.png", count=30, dx=30, dy=2)
-
-game_over = False
-
-# ---------------- Основний цикл ----------------
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+        if event.type == pygame.KEYDOWN and game_state == "PLAYING":
+            if event.key == pygame.K_LEFT or event.key == pygame.K_a:
+                player.move_left()
+            elif event.key == pygame.K_RIGHT or event.key == pygame.K_d:
+                player.move_right()
 
-    screen.blit(fon, (0, 0))
-    if not game_over:
-        wall.update()
-        bird.update()
+    if game_state == "PLAYING":
+        spawn_timer += 1
+        if spawn_timer >= 40 and spawned_obstacles_count < total_obstacles_to_spawn:
+            obstacles.append(Obstacle(random.randint(0, 2)))
+            spawn_timer = 0
+            spawned_obstacles_count += 1
 
-        time_label.count -= 1 / 40
+        player.update()
 
-        if bird.collide(wall) or bird.rect.y > 500 or bird.rect.y < 0:
-            health_label.count -= 1
+        for obs in obstacles[:]:
+            obs.update()
 
-        if health_label.count <= 0 or time_label.count <= 0:
-            game_over = True
+            if obs.y - obs.height // 2 > HEIGHT:
+                obstacles.remove(obs)
+                score += 10
+                score_label.update_text(f"Бали: {score}")
 
-    wall.draw(screen)
-    bird.draw(screen)
-    health_label.draw(screen)
-    time_label.draw(screen)
+            if player.get_rect().colliderect(obs.get_rect()):
+                game_state = "GAME_OVER"
+                message_label.update_text("ПОРАЗКА!")
+                message_label.color = (255, 50, 50)
 
-    if game_over:
-        over_text = font_large.render("GAME OVER", True, (255, 0, 0))
-        text_rect = over_text.get_rect(center=(250, 250))
-        screen.blit(over_text, text_rect)
+        if spawned_obstacles_count == total_obstacles_to_spawn and len(obstacles) == 0:
+            game_state = "WIN"
+            message_label.update_text("ПЕРЕМОГА!")
+            message_label.color = (50, 255, 50)
+
+    screen.fill((40, 40, 40))
+
+    pygame.draw.line(screen, (200, 200, 200), (200, 0), (200, HEIGHT), 4)
+    pygame.draw.line(screen, (200, 200, 200), (400, 0), (400, HEIGHT), 4)
+
+    if game_state == "PLAYING":
+        player.draw(screen)
+        for obs in obstacles:
+            obs.draw(screen)
+        score_label.draw(screen)
+    else:
+        message_label.draw(screen)
+        exit_label = TextLabel(
+            "Закрий вікно, щоб вийти",
+            WIDTH // 2,
+            HEIGHT // 2 + 60,
+            font_size=30,
+            color=(150, 150, 150),
+        )
+        exit_label.draw(screen)
 
     pygame.display.flip()
-    clock.tick(40)
+    clock.tick(60)
 
 pygame.quit()
-
+sys.exit()
